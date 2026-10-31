@@ -28,6 +28,8 @@ run "terraform fmt" terraform fmt -check -recursive "$dir"
 run "terraform validate" validate "$dir"
 run "policy unit tests" conftest verify
 run "policies on ${dir}" conftest test --all-namespaces --parser hcl2 "$dir"/*.tf
+run "plan adapter tests" bash scripts/test-plan-adapter.sh
+run "policies on the plan of ${dir}" bash scripts/plan-check.sh "$dir"
 run "checkov on ${dir}" checkov -d "$dir" --framework terraform --compact --quiet
 
 echo
