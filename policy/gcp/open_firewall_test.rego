@@ -61,3 +61,68 @@ test_allows_egress_rule if {
 	}]}}}
 	count(msgs) == 0
 }
+
+test_denies_port_range_that_includes_ssh if {
+	msgs := deny with input as {"resource": {"google_compute_firewall": {"range": [{
+		"direction": "INGRESS",
+		"allow": [{"protocol": "tcp", "ports": ["20-30"]}],
+		"source_ranges": ["0.0.0.0/0"],
+	}]}}}
+	count(msgs) == 1
+}
+
+test_denies_port_range_that_includes_rdp if {
+	msgs := deny with input as {"resource": {"google_compute_firewall": {"range": [{
+		"direction": "INGRESS",
+		"allow": [{"protocol": "tcp", "ports": ["3000-4000"]}],
+		"source_ranges": ["0.0.0.0/0"],
+	}]}}}
+	count(msgs) == 1
+}
+
+test_denies_range_with_exact_admin_port_as_boundary if {
+	msgs := deny with input as {"resource": {"google_compute_firewall": {"range": [{
+		"direction": "INGRESS",
+		"allow": [{"protocol": "tcp", "ports": ["22-22"]}],
+		"source_ranges": ["0.0.0.0/0"],
+	}]}}}
+	count(msgs) == 1
+}
+
+test_allows_port_range_without_admin_ports if {
+	msgs := deny with input as {"resource": {"google_compute_firewall": {"range": [{
+		"direction": "INGRESS",
+		"allow": [{"protocol": "tcp", "ports": ["8000-9000"]}],
+		"source_ranges": ["0.0.0.0/0"],
+	}]}}}
+	count(msgs) == 0
+}
+
+test_denies_unquoted_numeric_port if {
+	msgs := deny with input as {"resource": {"google_compute_firewall": {"ssh": [{
+		"direction": "INGRESS",
+		"allow": [{"protocol": "tcp", "ports": [22]}],
+		"source_ranges": ["0.0.0.0/0"],
+	}]}}}
+	count(msgs) == 1
+}
+
+test_allows_disabled_rule if {
+	msgs := deny with input as {"resource": {"google_compute_firewall": {"ssh": [{
+		"direction": "INGRESS",
+		"disabled": true,
+		"allow": [{"protocol": "tcp", "ports": ["22"]}],
+		"source_ranges": ["0.0.0.0/0"],
+	}]}}}
+	count(msgs) == 0
+}
+
+test_denies_rule_with_disabled_false if {
+	msgs := deny with input as {"resource": {"google_compute_firewall": {"ssh": [{
+		"direction": "INGRESS",
+		"disabled": false,
+		"allow": [{"protocol": "tcp", "ports": ["22"]}],
+		"source_ranges": ["0.0.0.0/0"],
+	}]}}}
+	count(msgs) == 1
+}
