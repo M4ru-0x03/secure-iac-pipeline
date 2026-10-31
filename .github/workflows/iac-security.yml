@@ -93,30 +93,54 @@ jobs:
           results="$RUNNER_TEMP/policy-results.json"
           status=0
           conftest test --all-namespaces --parser hcl2 -o json "$TARGET_DIR"/*.tf > "$results" || status=$?
-          {
-            echo "## Rego policies: \`$TARGET_DIR\`"
-            violations="$(jq '[.[] | (.failures // []) | length] | add' "$results")"
-            if [ "$violations" -eq 0 ]; then
-              echo "No policy violations."
-            else
-              echo "**$violations violation(s)**"
-              echo
-              echo "| File | Policy | Finding |"
-              echo "|---|---|---|"
-              jq -r '.[] | .filename as $f | .namespace as $n | (.failures // [])[] | "| \($f) | \($n) | \(.msg) |"' "$results"
-            fi
-            # Warnings never fail the job, but they must stay visible.
-            warnings="$(jq '[.[] | (.warnings // []) | length] | add' "$results")"
-            if [ "$warnings" -gt 0 ]; then
-              echo
-              echo "**$warnings warning(s)** (these do not block the merge)"
-              echo
-              echo "| File | Policy | Warning |"
-              echo "|---|---|---|"
-              jq -r '.[] | .filename as $f | .namespace as $n | (.warnings // [])[] | "| \($f) | \($n) | \(.msg) |"' "$results"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          bash scripts/conftest-summary.sh "$results" "Rego policies: \`$TARGET_DIR\`" >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
+
+  plan-policies:
+    name: Rego policies on the plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The wrapper would add output around `terraform show -json`.
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Install Conftest
+        run: |
+          bash scripts/install-conftest.sh "$CONFTEST_VERSION" "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Test the plan adapter
+        run: bash scripts/test-plan-adapter.sh
+
+      - name: Plan offline and apply the policies to the plan
+        run: |
+          # Terraform is planned with a fake token and never applied. The results file
+          # is not named conftest.json: Conftest would read it as its own config.
+          results="$RUNNER_TEMP/plan-policy-results.json"
+          status=0
+          bash scripts/plan-check.sh "$TARGET_DIR" -o json > "$results" || status=$?
+          if ! jq -e . "$results" > /dev/null 2>&1; then
+            echo "Could not produce policy results for the plan of $TARGET_DIR" >&2
+            exit 1
+          fi
+          bash scripts/conftest-summary.sh "$results" "Rego policies on the plan: \`$TARGET_DIR\`" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Every custom policy must fire on the plan of terraform/vulnerable
+        run: |
+          results="$RUNNER_TEMP/vulnerable-plan-results.json"
+          bash scripts/plan-check.sh terraform/vulnerable/gcp -o json > "$results" || true
+          firing="$(jq '[.[] | select((.failures // []) | length > 0) | .namespace] | unique | length' "$results")"
+          {
+            echo "## Regression check on the plan: \`terraform/vulnerable/gcp\`"
+            echo "Policies that fired: **$firing of $POLICY_COUNT**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$firing" -eq "$POLICY_COUNT"
 
   scanner-regression:
     name: Scanners still catch the known-bad code

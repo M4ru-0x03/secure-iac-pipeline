@@ -1,0 +1,11 @@
+{"resource_changes": [{
+  "address": "google_storage_bucket.data", "mode": "managed", "type": "google_storage_bucket", "name": "data",
+  "change": {"actions": ["create"],
+    "after": {"name": "b", "encryption": [{"customer_managed_encryption_enforcement_config": []}]},
+    "after_unknown": {"id": true, "encryption": [{"customer_managed_encryption_enforcement_config": [], "default_kms_key_name": true}]}}
+}],
+"configuration": {"root_module": {"resources": [{
+  "address": "google_storage_bucket.data", "type": "google_storage_bucket", "name": "data",
+  "expressions": {"name": {"constant_value": "b"},
+    "encryption": [{"default_kms_key_name": {"references": ["google_kms_crypto_key.bucket.id", "google_kms_crypto_key.bucket"]}}]}
+}]}}}

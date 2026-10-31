@@ -1,0 +1,4 @@
+{"resource": {"google_compute_instance": {"module.net.web": [{
+  "name": "v",
+  "service_account": [{"email": "(known after apply)"}]
+}]}}}

@@ -1,0 +1,7 @@
+{"resource_changes": [{
+  "address": "google_compute_firewall.f", "mode": "managed", "type": "google_compute_firewall", "name": "f",
+  "change": {"actions": ["create"],
+    "after": {"name": "f", "direction": null, "disabled": null, "target_tags": [],
+              "allow": [{"protocol": "tcp", "ports": []}], "source_ranges": ["0.0.0.0/0"]},
+    "after_unknown": {}}
+}]}

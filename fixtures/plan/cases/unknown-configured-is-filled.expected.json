@@ -1,0 +1,4 @@
+{"resource": {"google_storage_bucket": {"data": [{
+  "name": "b",
+  "encryption": [{"default_kms_key_name": "(known after apply)"}]
+}]}}}

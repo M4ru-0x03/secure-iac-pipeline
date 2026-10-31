@@ -1,0 +1,7 @@
+{"resource_changes": [{
+  "address": "google_compute_instance.v", "mode": "managed", "type": "google_compute_instance", "name": "v",
+  "change": {"actions": ["create"],
+    "after": {"name": "v", "network_interface": [{"subnetwork": "s", "alias_ip_range": [],
+              "access_config": [{"public_ptr_domain_name": null}]}]},
+    "after_unknown": {}}
+}]}
