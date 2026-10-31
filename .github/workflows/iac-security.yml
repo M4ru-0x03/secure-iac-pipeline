@@ -1,0 +1,140 @@
+name: IaC security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  TERRAFORM_VERSION: "1.17.1"
+  CONFTEST_VERSION: "0.71.1"
+  CHECKOV_VERSION: "3.4.0"
+  # The code that must pass every check before it can be merged.
+  TARGET_DIR: terraform/fixed/gcp
+  # Number of custom policies under policy/; the regression job expects all of them to fire.
+  POLICY_COUNT: "8"
+
+jobs:
+  terraform:
+    name: Terraform fmt and validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [terraform/fixed/gcp, terraform/vulnerable/gcp]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Format check
+        run: terraform fmt -check -recursive "${{ matrix.dir }}"
+
+      - name: Init without backend (no cloud credentials needed)
+        run: terraform -chdir="${{ matrix.dir }}" init -backend=false -input=false
+
+      - name: Validate
+        run: terraform -chdir="${{ matrix.dir }}" validate
+
+  checkov:
+    name: Checkov
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Checkov
+        run: python -m pip install "checkov==${CHECKOV_VERSION}"
+
+      - name: Scan Terraform
+        run: |
+          status=0
+          checkov -d "$TARGET_DIR" --framework terraform -o github_failed_only > checkov.md || status=$?
+          {
+            echo "## Checkov: \`$TARGET_DIR\`"
+            if [ "$status" -eq 0 ]; then
+              echo "No failed checks."
+            else
+              cat checkov.md
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  conftest:
+    name: Rego policies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Conftest
+        run: |
+          bash scripts/install-conftest.sh "$CONFTEST_VERSION" "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Unit-test the policies
+        run: conftest verify
+
+      - name: Apply the policies to the Terraform
+        run: |
+          status=0
+          conftest test --all-namespaces --parser hcl2 -o json "$TARGET_DIR"/*.tf > conftest.json || status=$?
+          {
+            echo "## Rego policies: \`$TARGET_DIR\`"
+            violations="$(jq '[.[] | (.failures // []) | length] | add' conftest.json)"
+            if [ "$violations" -eq 0 ]; then
+              echo "No policy violations."
+            else
+              echo "**$violations violation(s)**"
+              echo
+              echo "| File | Policy | Finding |"
+              echo "|---|---|---|"
+              jq -r '.[] | .filename as $f | .namespace as $n | (.failures // [])[] | "| \($f) | \($n) | \(.msg) |"' conftest.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  scanner-regression:
+    name: Scanners still catch the known-bad code
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Conftest and Checkov
+        run: |
+          bash scripts/install-conftest.sh "$CONFTEST_VERSION" "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          python -m pip install "checkov==${CHECKOV_VERSION}"
+
+      - name: Every custom policy must fire on terraform/vulnerable
+        run: |
+          conftest test --all-namespaces --parser hcl2 -o json terraform/vulnerable/gcp/*.tf > vulnerable.json || true
+          firing="$(jq '[.[] | select((.failures // []) | length > 0) | .namespace] | unique | length' vulnerable.json)"
+          {
+            echo "## Regression check: \`terraform/vulnerable/gcp\`"
+            echo "Policies that fired: **$firing of $POLICY_COUNT**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$firing" -eq "$POLICY_COUNT"
+
+      - name: Checkov must fail on terraform/vulnerable
+        run: |
+          if checkov -d terraform/vulnerable/gcp --framework terraform --quiet > /dev/null; then
+            echo "Checkov passed on code that is known to be vulnerable" >&2
+            exit 1
+          fi
