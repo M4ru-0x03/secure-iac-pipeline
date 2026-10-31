@@ -88,11 +88,14 @@ jobs:
 
       - name: Apply the policies to the Terraform
         run: |
+          # Results go outside the workspace: Conftest treats a conftest.* file in the
+          # working directory as its own config file and fails to parse it.
+          results="$RUNNER_TEMP/policy-results.json"
           status=0
-          conftest test --all-namespaces --parser hcl2 -o json "$TARGET_DIR"/*.tf > conftest.json || status=$?
+          conftest test --all-namespaces --parser hcl2 -o json "$TARGET_DIR"/*.tf > "$results" || status=$?
           {
             echo "## Rego policies: \`$TARGET_DIR\`"
-            violations="$(jq '[.[] | (.failures // []) | length] | add' conftest.json)"
+            violations="$(jq '[.[] | (.failures // []) | length] | add' "$results")"
             if [ "$violations" -eq 0 ]; then
               echo "No policy violations."
             else
@@ -100,7 +103,7 @@ jobs:
               echo
               echo "| File | Policy | Finding |"
               echo "|---|---|---|"
-              jq -r '.[] | .filename as $f | .namespace as $n | (.failures // [])[] | "| \($f) | \($n) | \(.msg) |"' conftest.json
+              jq -r '.[] | .filename as $f | .namespace as $n | (.failures // [])[] | "| \($f) | \($n) | \(.msg) |"' "$results"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
