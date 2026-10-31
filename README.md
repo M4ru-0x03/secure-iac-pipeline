@@ -1,6 +1,6 @@
-# Secure IaC Pipeline
+# Secure IaC Pipeline for GCP
 
-[![IaC security](https://github.com/M4ru-0x03/secure-iac-pipeline/actions/workflows/iac-security.yml/badge.svg?branch=main)](https://github.com/M4ru-0x03/secure-iac-pipeline/actions/workflows/iac-security.yml)
+[![IaC security](https://github.com/M4ru-0x03/secure-iac-pipeline-gcp/actions/workflows/iac-security.yml/badge.svg?branch=main)](https://github.com/M4ru-0x03/secure-iac-pipeline-gcp/actions/workflows/iac-security.yml)
 
 A CI pipeline that blocks cloud misconfigurations in Terraform **before** they are deployed. Every pull request is scanned with [Checkov](https://www.checkov.io/) and eight custom [OPA/Rego](https://www.openpolicyagent.org/) policies run through [Conftest](https://www.conftest.dev/). A violation fails the check and the findings are published as a readable table.
 
@@ -21,10 +21,12 @@ flowchart LR
     PR[Pull request] --> A[terraform fmt + validate]
     PR --> B[Checkov]
     PR --> C[Rego policies via Conftest]
+    PR --> P[Same policies on the terraform plan]
     PR --> D[Regression check]
     A --> G{All checks pass?}
     B --> G
     C --> G
+    P --> G
     D --> G
     G -- yes --> M[Merge allowed]
     G -- no --> X[Merge blocked, findings in job summary]
@@ -35,6 +37,7 @@ flowchart LR
 | **Terraform fmt and validate** | `fmt -check`, `init -backend=false` and `validate` on both the fixed and the vulnerable code. No credentials needed. |
 | **Checkov** | Scans `terraform/fixed/gcp` and writes failed checks to the job summary. |
 | **Rego policies** | Runs the policy unit tests (`conftest verify`), then applies the policies to `terraform/fixed/gcp`. |
+| **Rego policies on the plan** | Plans `terraform/fixed/gcp` offline, converts the plan JSON, and applies the same policies to it; then requires all 8 policies to fire on the plan of the vulnerable code. See [Policies on the Terraform plan](#policies-on-the-terraform-plan). |
 | **Scanners still catch the known-bad code** | Requires all 8 policies to fire on `terraform/vulnerable/gcp`, and Checkov to fail on it. A scanner that silently stops detecting would otherwise pass green. |
 
 ## Policies
@@ -63,7 +66,7 @@ The last column comes from `checkov --list` on the pinned version (3.4.0). Two p
 | Rego policies | 9 violations (all 8 policies fire) | 0 |
 | Checkov | 15 failed, 14 passed | 0 failed, 36 passed, 2 skipped with a written reason |
 
-[Pull request #1](https://github.com/M4ru-0x03/secure-iac-pipeline/pull/1) reintroduces an open SSH rule and a public bucket into the fixed code. The run fails, and both scanners agree on the findings:
+[Pull request #1](https://github.com/M4ru-0x03/secure-iac-pipeline-gcp/pull/1) reintroduces an open SSH rule and a public bucket into the fixed code. The run fails, and both scanners agree on the findings:
 
 ![Rego policies summary of the blocked run](docs/images/blocked-pr-rego-summary.png)
 
@@ -76,6 +79,26 @@ Reverting the change on the same branch turns every job green:
 The regression job proves the scanners still see the known-bad code:
 
 ![Regression check summary](docs/images/regression-summary.png)
+
+## Policies on the Terraform plan
+
+The policies read the HCL by default. A plan is more accurate because Terraform has already resolved variables, so the same policies also run on `terraform show -json` output, without a cloud account: the plan is made with a fake token, with `-refresh=false`, and is never applied.
+
+The same Terraform, evaluated in both modes (`labels = var.labels`, where the map has no `environment` key, and a firewall rule with no ports):
+
+| | HCL | Plan |
+|---|---|---|
+| Firewall open to the internet on all ports | blocked | blocked |
+| Labels from a variable, `environment` missing | warning: "cannot be checked statically" | **blocked**: `missing required labels: environment` |
+
+The Rego policies are not touched. [`scripts/plan-to-input.jq`](scripts/plan-to-input.jq) converts the plan into the shape the HCL parser produces, and two differences between a plan and HCL need care:
+
+- **Values known only after apply** are missing from the plan's `after` section. The adapter fills them with a placeholder only if the code configured the attribute (for example the KMS key of a bucket references another resource). A value the code never set but the provider computes, like the default service account email, stays absent, as in HCL. Otherwise `default_service_account` would not fire.
+- **Unset attributes** appear as `null` or as empty lists (`ports: []`, `direction: null`). They are dropped, because in HCL they are absent and the policies treat absence as "all ports" or "ingress".
+
+The adapter has its own tests in [`fixtures/plan/cases`](fixtures/plan/cases), run by `scripts/test-plan-adapter.sh`.
+
+Planning offline has one requirement: the code must not use a data source that calls the provider API, because that needs real credentials. The fixed Terraform builds the Cloud Storage service agent address from a `project_number` variable instead of reading it with a data source.
 
 ## Run it locally
 
@@ -91,6 +114,9 @@ bash scripts/run-checks.sh
 
 # Against the intentionally vulnerable code (exits 1 and lists the findings)
 bash scripts/run-checks.sh terraform/vulnerable/gcp
+
+# Only the policies on the terraform plan
+bash scripts/plan-check.sh terraform/vulnerable/gcp
 ```
 
 Or one tool at a time:
@@ -110,13 +136,15 @@ checkov -d terraform/vulnerable/gcp --framework terraform
 policy/gcp/                          Rego policies and their unit tests
 terraform/vulnerable/gcp/            Known-bad Terraform (the "before")
 terraform/fixed/gcp/                 Remediated Terraform (the "after")
-scripts/                             Local runner and Conftest installer
+scripts/                             Local runner, plan check, plan adapter, Conftest installer
+fixtures/plan/cases/                 Test cases for the plan adapter
 docs/                                Evidence (Checkov output) and screenshots
 ```
 
 ## Design decisions
 
-- **Static analysis only.** Conftest reads the HCL directly through its `hcl2` parser, so no plan or credentials are needed. The trade-off is that variables and modules are not resolved.
+- **Static analysis only.** Conftest reads the HCL directly through its `hcl2` parser, so no credentials are needed; the plan mode adds a second view with variables resolved, still without a cloud account.
+- **An adapter, not a second set of policies.** The plan is converted to the HCL shape, so there is one implementation of each policy and one set of unit tests.
 - **One Rego package per policy.** Tests are isolated and a policy can be disabled on its own. The cost is running `conftest test` with `--all-namespaces`.
 - **Tests first, including the allowed cases.** Each policy has tests for what must be flagged and for what must pass (for example SSH from a private range, or a dedicated service account with the `cloud-platform` scope).
 - **The pipeline tests itself.** The regression job guards against a policy that silently stops firing.
@@ -125,8 +153,9 @@ docs/                                Evidence (Checkov output) and screenshots
 
 ## Limitations
 
-- Only Google Cloud resources are covered, and only the resource types listed above.
-- Labels set through a variable or expression (`labels = var.labels`) cannot be read statically, so `required_labels` reports a warning (visible in the job summary, not blocking) instead of checking them.
+- Coverage is limited to the resource types the eight policies check; other Google Cloud resources are not evaluated.
+- Labels set through a variable or expression (`labels = var.labels`) cannot be read from the HCL, so there `required_labels` reports a warning (visible in the job summary, not blocking). The plan mode resolves them and checks them for real.
+- The plan mode needs code that can be planned offline: a data source that calls the provider API fails without credentials.
 - `flow_logs` checks that logging is enabled, not its sampling or aggregation settings.
 - Each file is evaluated on its own, so a rule that needs two resources together is not possible without Conftest's `--combine`.
 
