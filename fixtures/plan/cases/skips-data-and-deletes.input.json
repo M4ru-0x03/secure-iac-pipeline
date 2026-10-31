@@ -1,0 +1,8 @@
+{"resource_changes": [
+  {"address": "data.google_x.d", "mode": "data", "type": "google_x", "name": "d",
+   "change": {"actions": ["read"], "after": {"a": 1}, "after_unknown": {}}},
+  {"address": "google_compute_network.old", "mode": "managed", "type": "google_compute_network", "name": "old",
+   "change": {"actions": ["delete"], "after": null, "after_unknown": {}}},
+  {"address": "google_compute_network.main", "mode": "managed", "type": "google_compute_network", "name": "main",
+   "change": {"actions": ["create"], "after": {"name": "n"}, "after_unknown": {}}}
+]}

@@ -1,0 +1,4 @@
+{"resource": {"google_compute_instance": {"web": [{
+  "name": "v",
+  "service_account": [{"scopes": ["https://www.googleapis.com/auth/cloud-platform"]}]
+}]}}}

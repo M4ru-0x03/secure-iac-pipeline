@@ -1,0 +1,4 @@
+{"resource": {
+  "google_compute_instance": {"web[0]": [{"name": "a"}], "web[\"b\"]": [{"name": "b"}]},
+  "google_compute_network": {"module.net.main": [{"name": "n"}]}
+}}

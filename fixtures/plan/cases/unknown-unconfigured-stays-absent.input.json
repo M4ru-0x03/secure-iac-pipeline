@@ -1,0 +1,11 @@
+{"resource_changes": [{
+  "address": "google_compute_instance.web", "mode": "managed", "type": "google_compute_instance", "name": "web",
+  "change": {"actions": ["create"],
+    "after": {"name": "v", "service_account": [{"scopes": ["https://www.googleapis.com/auth/cloud-platform"]}]},
+    "after_unknown": {"id": true, "service_account": [{"email": true, "scopes": [false]}]}}
+}],
+"configuration": {"root_module": {"resources": [{
+  "address": "google_compute_instance.web", "type": "google_compute_instance", "name": "web",
+  "expressions": {"name": {"constant_value": "v"},
+    "service_account": [{"scopes": {"constant_value": ["cloud-platform"]}}]}
+}]}}}

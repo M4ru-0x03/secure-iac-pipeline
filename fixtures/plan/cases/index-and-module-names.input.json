@@ -1,0 +1,8 @@
+{"resource_changes": [
+  {"address": "google_compute_instance.web[0]", "mode": "managed", "type": "google_compute_instance", "name": "web", "index": 0,
+   "change": {"actions": ["create"], "after": {"name": "a"}, "after_unknown": {}}},
+  {"address": "google_compute_instance.web[\"b\"]", "mode": "managed", "type": "google_compute_instance", "name": "web", "index": "b",
+   "change": {"actions": ["create"], "after": {"name": "b"}, "after_unknown": {}}},
+  {"address": "module.net.google_compute_network.main", "module_address": "module.net", "mode": "managed", "type": "google_compute_network", "name": "main",
+   "change": {"actions": ["create"], "after": {"name": "n"}, "after_unknown": {}}}
+]}
