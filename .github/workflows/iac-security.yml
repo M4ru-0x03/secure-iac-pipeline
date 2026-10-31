@@ -105,6 +105,16 @@ jobs:
               echo "|---|---|---|"
               jq -r '.[] | .filename as $f | .namespace as $n | (.failures // [])[] | "| \($f) | \($n) | \(.msg) |"' "$results"
             fi
+            # Warnings never fail the job, but they must stay visible.
+            warnings="$(jq '[.[] | (.warnings // []) | length] | add' "$results")"
+            if [ "$warnings" -gt 0 ]; then
+              echo
+              echo "**$warnings warning(s)** (these do not block the merge)"
+              echo
+              echo "| File | Policy | Warning |"
+              echo "|---|---|---|"
+              jq -r '.[] | .filename as $f | .namespace as $n | (.warnings // [])[] | "| \($f) | \($n) | \(.msg) |"' "$results"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 

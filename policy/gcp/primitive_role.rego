@@ -1,21 +1,27 @@
 package gcp.primitive_role
 
-# Project-level IAM must not use the primitive roles (owner, editor, viewer);
-# use predefined or custom roles scoped to what the identity needs.
-# Scope: project-level resources only (not folder or organization).
+# IAM at project, folder and organization level must not use the primitive
+# roles (owner, editor, viewer); use predefined or custom roles scoped to what
+# the identity needs. Covers the *_iam_member and *_iam_binding resources.
 
 primitive_roles := {"roles/owner", "roles/editor", "roles/viewer"}
 
-deny contains msg if {
-	some name, instances in input.resource.google_project_iam_member
-	some instance in instances
-	instance.role in primitive_roles
-	msg := sprintf("google_project_iam_member.%s uses primitive role %s; use a predefined or custom role", [name, instance.role])
+member_types := {
+	"google_project_iam_member",
+	"google_folder_iam_member",
+	"google_organization_iam_member",
+}
+
+binding_types := {
+	"google_project_iam_binding",
+	"google_folder_iam_binding",
+	"google_organization_iam_binding",
 }
 
 deny contains msg if {
-	some name, instances in input.resource.google_project_iam_binding
+	some type in (member_types | binding_types)
+	some name, instances in input.resource[type]
 	some instance in instances
 	instance.role in primitive_roles
-	msg := sprintf("google_project_iam_binding.%s uses primitive role %s; use a predefined or custom role", [name, instance.role])
+	msg := sprintf("%s.%s uses primitive role %s; use a predefined or custom role", [type, name, instance.role])
 }

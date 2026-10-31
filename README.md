@@ -39,14 +39,14 @@ flowchart LR
 
 ## Policies
 
-Each policy has its own Rego package under [`policy/gcp/`](policy/gcp/) and unit tests next to it (46 in total), written before the policy itself.
+Each policy has its own Rego package under [`policy/gcp/`](policy/gcp/) and unit tests next to it (61 in total), written before the policy itself.
 
 | Policy | Blocks | Why it matters | Checkov equivalent |
 |---|---|---|---|
 | [`public_bucket`](policy/gcp/public_bucket.rego) | `allUsers` / `allAuthenticatedUsers` on a bucket (IAM member or binding) | Anyone on the internet can read the data | `CKV_GCP_28` |
-| [`open_firewall`](policy/gcp/open_firewall.rego) | Ingress from `0.0.0.0/0` or `::/0` to SSH, RDP or all ports | Exposes administrative access to the internet | `CKV_GCP_2` and others |
+| [`open_firewall`](policy/gcp/open_firewall.rego) | Ingress from `0.0.0.0/0` or `::/0` to SSH, RDP or all ports (port ranges are expanded, disabled rules are ignored) | Exposes administrative access to the internet | `CKV_GCP_2` and others |
 | [`bucket_cmek`](policy/gcp/bucket_cmek.rego) | Bucket without a customer-managed KMS key | Key control, rotation and revocation stay with you | none found |
-| [`primitive_role`](policy/gcp/primitive_role.rego) | `roles/owner`, `roles/editor`, `roles/viewer` at project level | Far broader than any single job needs | `CKV_GCP_117` |
+| [`primitive_role`](policy/gcp/primitive_role.rego) | `roles/owner`, `roles/editor`, `roles/viewer` at project, folder or organization level | Far broader than any single job needs | `CKV_GCP_117` |
 | [`flow_logs`](policy/gcp/flow_logs.rego) | Subnet without `log_config` | No network telemetry for investigations | `CKV_GCP_26` |
 | [`default_service_account`](policy/gcp/default_service_account.rego) | VM running as the default service account with the `cloud-platform` scope | A compromised VM can reach every API the account can | `CKV_GCP_30`, `CKV_GCP_31` |
 | [`public_ip`](policy/gcp/public_ip.rego) | Instance with an `access_config` block | Gives the VM an external address | `CKV_GCP_40` |
@@ -126,13 +126,9 @@ docs/                                Evidence (Checkov output) and screenshots
 ## Limitations
 
 - Only Google Cloud resources are covered, and only the resource types listed above.
-- Port ranges such as `20-30` are not expanded by `open_firewall`.
-- Labels set through a variable (`labels = var.labels`) cannot be read statically and are reported as missing.
-- `primitive_role` covers project-level IAM only, not folders or organisations.
+- Labels set through a variable or expression (`labels = var.labels`) cannot be read statically, so `required_labels` reports a warning (visible in the job summary, not blocking) instead of checking them.
 - `flow_logs` checks that logging is enabled, not its sampling or aggregation settings.
-- A firewall rule with `disabled = true` is still reported.
 - Each file is evaluated on its own, so a rule that needs two resources together is not possible without Conftest's `--combine`.
-- The Identity-Aware Proxy range in `terraform/fixed/gcp/network.tf` should be confirmed against Google's documentation before real use.
 
 ## License
 

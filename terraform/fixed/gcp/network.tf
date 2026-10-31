@@ -22,8 +22,8 @@ resource "google_compute_subnetwork" "main" {
 }
 
 # FIX (open firewall): SSH is only reachable through Identity-Aware Proxy
-# TCP forwarding. 35.235.240.0/20 is the IAP range published by Google;
-# confirm it in the IAP documentation before real use.
+# TCP forwarding. 35.235.240.0/20 is the range Google documents for IAP TCP
+# forwarding (VMs with IPv6 use a separate range, see the IAP documentation).
 resource "google_compute_firewall" "allow_ssh_from_iap" {
   name      = "allow-ssh-from-iap"
   network   = google_compute_network.main.name
