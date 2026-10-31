@@ -1,0 +1,2 @@
+# Force LF line endings so files edited on Windows behave the same in WSL and on Linux CI runners
+* text=auto eol=lf

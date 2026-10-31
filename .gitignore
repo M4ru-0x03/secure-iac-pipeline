@@ -1,0 +1,27 @@
+# Terraform working directory (downloaded providers and modules)
+.terraform/
+
+# State files may contain secrets in plain text; never commit them
+*.tfstate
+*.tfstate.*
+
+# Binary plan files may also contain secrets (JSON plan fixtures are committed on purpose)
+*.tfplan
+
+# Variable files often hold environment-specific or secret values
+*.tfvars
+*.tfvars.json
+
+# Local override files are meant to stay on one machine
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Crash logs and CLI config
+crash.log
+crash.*.log
+.terraformrc
+terraform.rc
+
+# Note: .terraform.lock.hcl is intentionally NOT ignored (pins provider versions and checksums)
